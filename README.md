@@ -240,3 +240,123 @@ GEMINI_API_KEY=your_api_key_here
 - "What entertainment news mentions movies?"
 - "Find business news from 2021"
 - "Show me political news about elections"
+
+
+
+
+
+// index.tsx (Minimal patch: support postMessage token + company domain whitelist)
+
+import { createRoot } from 'react-dom/client';
+import { BrowserRouter as Router } from 'react-router-dom';
+import App from './App';
+import { useEffect, useState } from 'react';
+
+/** Allowed parent page conditions: limited to https + jpmchase company domain; optionally allow localhost (for development) */
+const ALLOW_PARENT_SUFFIX = '.jpmchase.net';
+const ALLOW_SCHEMES = new Set(['https:']);
+const ALLOW_LOCALHOST = true;
+
+// After the first successful validation, "lock" the parent origin. Subsequent messages will only be sent to this origin.
+let parentOriginRef: string | null = null;
+
+function isAllowedParentOrigin(origin: string): boolean {
+  try {
+    const u = new URL(origin);
+    const host = u.hostname.toLowerCase();
+    const schemeOk = ALLOW_SCHEMES.has(u.protocol) || (ALLOW_LOCALHOST && host === 'localhost');
+    const suffixOk =
+      host === 'jpmchase.net' ||
+      host.endsWith(ALLOW_PARENT_SUFFIX) ||
+      (ALLOW_LOCALHOST && host === 'localhost');
+    return schemeOk && suffixOk;
+  } catch {
+    return false;
+  }
+}
+
+function requestToken(reason: 'startup' | '401' | 'proactive' = 'startup') {
+  // When the parent origin is not yet locked, send the request with "*" as the target (the request itself contains no sensitive info).
+  const target = parentOriginRef ?? '*';
+  parent.postMessage({ type: 'token:request', reason }, target);
+}
+
+const Main = () => {
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [themeIdxCode, setThemeIdxCode] = useState(1); // 1 = Dark
+  const [userName, setUserName] = useState<string | null>(null);
+  const [geospatialViewer, setGeospatialViewer] = useState(false);
+
+  /** ① Retain old logic: read UI parameters from the URL; if a token exists, write it to sessionStorage */
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tokenFromUrl = params.get('token');
+    setThemeIdxCode(params.get('theme') === '0' ? 0 : 1); // Default to Dark
+    setUserName(params.get('userName'));
+    setGeospatialViewer(params.get('geospatialViewer') === 'true');
+
+    if (tokenFromUrl) {
+      sessionStorage.setItem('currentUser', JSON.stringify({ access_token: tokenFromUrl }));
+      setIsAuthorized(true);
+    } else {
+      // If the URL doesn't contain a token, check sessionStorage to avoid an initial unauthorized state.
+      const hasSession = !!sessionStorage.getItem('currentUser');
+      setIsAuthorized(hasSession);
+    }
+  }, []); // ← Empty dependency array to run only once on mount.
+
+  /** ② New logic: receive postMessage from the parent page and request a token on startup */
+  useEffect(() => {
+    function onMessage(e: MessageEvent) {
+      if (!isAllowedParentOrigin(e.origin)) return;
+
+      // Upon receiving the first valid message, lock the parent's origin for all subsequent communications.
+      if (!parentOriginRef) parentOriginRef = e.origin;
+
+      const msg = e.data;
+
+      if (msg?.type === 'auth:token' && msg.token) {
+        // Write the token to sessionStorage for compatibility with existing layers (e.g., RestApi/authProvider).
+        sessionStorage.setItem('currentUser', JSON.stringify({ access_token: msg.token }));
+        setIsAuthorized(true);
+      }
+
+      if (msg?.type === 'ui:theme') {
+        const isDark = msg.theme === 'dark';
+        setThemeIdxCode(isDark ? 1 : 0);
+        // Immediately toggle the <html> class name, consistent with the approach in App.jsx.
+        document.documentElement.classList.toggle('dark', isDark);
+        document.documentElement.classList.toggle('Light', !isDark);
+      }
+    }
+
+    window.addEventListener('message', onMessage);
+
+    // If there's no token after 3 seconds, proactively request one from the parent page.
+    const t = window.setTimeout(() => {
+      const hasSession = !!sessionStorage.getItem('currentUser');
+      if (!hasSession) requestToken('startup');
+    }, 3000);
+
+    return () => {
+      window.removeEventListener('message', onMessage);
+      clearTimeout(t);
+    };
+  }, []);
+
+  return (
+    <Router>
+      <App
+        isAuthorized={isAuthorized}
+        themeIdxCode={themeIdxCode}
+        userName={userName}
+        geospatialViewer={geospatialViewer}
+      />
+    </Router>
+  );
+};
+
+const container = document.getElementById('root')!;
+const root = createRoot(container);
+root.render(<Main />);
+
