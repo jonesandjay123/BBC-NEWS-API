@@ -247,81 +247,51 @@ GEMINI_API_KEY=your_api_key_here
 
 
 
-目標：把現在用 URL query 傳 token 的做法，改成用 postMessage 的雙向通訊；讓 token 可在 iframe 不重載的情況下即時更新，並處理主題同步與 401 自救。
+我只建議做幾個「小修補 + 健壯化」就更穩了：
 
-事件協議（固定字串，不要改名）
+把 childOrigin 抽成常量並只算一次
+現在在多處 new URL(...).origin，抽出 const CHILD_ORIGIN = useMemo(() => new URL(minionAssistantUIApplicationLink).origin, [minionAssistantUIApplicationLink])，避免拼寫錯或未來改 URL 時不一致。
 
-Parent → Child
+token 近效判定時的 fallback
+parseJwt 失敗或沒有 exp 時你現在 return true（視為快過期），但 sendTokenToIframe() 仍然只是再送一次舊 token。建議：
 
-{"type":"auth:token", "token":"...", "exp": <optional unix seconds>}
+如果 !exp 或解析失敗 → 直接「當作需要刷新」，去呼叫你們 Terra 端的取 token 流程（若目前只能 authServices.getUser()，至少重新讀一次；若之後接上 /exchange-for-minion，在這裡打）。
 
-{"type":"ui:theme", "theme":"dark" | "light"}
+同時把「收到子頁 token:request」時也走同一個取 token 函數，確保回的永遠是最新。
 
-{"type":"auth:error", "code":"...", "message":"..."}
+前景/可見性喚醒再推一次
+瀏覽器掛背景久了計時器可能被 throttle。加上 visibilitychange/focus 事件：頁面回前景或 iframe 面板變可見時，立即 sendTokenToIframe()。
 
-Child → Parent
+負載節流
+加一個 2–3 秒的節流避免極端情況下 spam postMessage（例如主題在父頁被快速切換時或 token:request 短時間連發）。
 
-{"type":"token:request", "reason":"startup" | "proactive" | "401"}
+鏈路日誌（開發期）
+現在你有 console.warn / console.log 很好；再加一個 console.debug('[minion-panel] postMessage auth:token exp=', exp)，協助後續驗證 exp 與續期時點。
 
-安全與原則
+iframe allow（可選）
+若你們有複製/貼上需求，可在 iframe 加 allow="clipboard-read; clipboard-write"（純前端，安全上 OK）。
 
-絕對不要再把 token 放進 URL（含 query 或 hash）。
+邏輯順序
+useEffect（初次送 token 與每 60 秒巡檢）依賴 iframeLoaded 沒問題；保留清除 interval 的 return 已有。
 
-postMessage 必須使用精確的 targetOrigin，Child 必須檢查 event.origin。
+主題同步
+prevThemeRef 已做去抖，OK。若未來主題不只 dark/light，可把 payload 擴成 {theme, version}，但現在不必。
 
-token 只放記憶體或 sessionStorage（若真的需要），不要放 localStorage。
+如果你想保險一點，這 3 條再補上就完美：
 
-若後續有 Token Exchange，Child 只應收到 Minion-scoped 的短時 token（非企業大權限 token）。
+在處理 token:request 前，先判定是否距離過期 < 5 分鐘或解析不到 exp → 走「刷新/重取」路徑，再推送。
 
-Prompt 1 — 給 TerraDesktop Copilot（Parent 端）
+在 window.addEventListener('focus', …) 與 document.addEventListener('visibilitychange', …) 裡再推一次 token。
 
-你負責 TerraDesktop 專案中「嵌入 Minion Assistant 的 iframe 面板」。請在不依賴子專案細節的前提下完成以下工作：
+抽出 async function pushFreshToken()：內含「重新取得 → postMessage」的通用流程，供定時巡檢、token:request、前景喚醒三處共用，避免分叉實作。
 
-你要做的事
 
-移除以 URL 傳 token 的機制
 
-iframe.src 只保留乾淨的基底網址（不帶 token）。
 
-其他純 UI 參數（如 geospatialViewer）可保留為 query，但不要包含任何敏感憑證。
 
-在面板載入後，透過 postMessage 主動把 token 推送給 iframe
 
-一載入就立即推送一次 {"type":"auth:token", ...}。
 
-之後每 60 秒檢查一次是否需要續期（例如距離到期 < 5 分鐘或沒有 exp），需要就再推送新的 token。
 
-同時監聽來自子頁的 {"type":"token:request"}，一收到就立刻續 token 並回推 auth:token。
-
-主題同步也改走 postMessage
-
-當 Terra 的 dark/light 狀態改變時，對 iframe 發送 {"type":"ui:theme","theme":"dark|light"}。
-
-不要重載 iframe。
-
-來源驗證
-
-postMessage 的 targetOrigin 必須是 Minion UI 的精確網域。
-
-監聽子頁訊息時，要驗證 event.origin 是否為該網域；不是就忽略。
-
-token 來源
-
-先沿用你們現有的「在 TerraDesktop 端可以拿到的使用者 token」方式。
-
-若團隊已有「交換成 Minion 專用短時 token」的 API，優先使用該 API，再把交換後的 token 推給子頁。
-
-驗收標準
-
-在 Terra 停留 50 分鐘後才打開 Minion 分頁，Minion 仍能立即登入使用。
-
-Terra 不刷新、頁面閒置超過 60 分鐘，回到 Minion 仍可正常對話（Parent 定時或按需推送有效 token）。
-
-切換 dark/light，iframe 內主題能立即更新。
-
-瀏覽器的網址與網路紀錄中不再出現 token；postMessage 的 origin 嚴格檢查無誤。
-
-有文件（或 PR 描述）簡述上述事件協議與行為。
 
 Prompt 2 — 給 Minion Assistant UI Copilot（Child 端）
 
