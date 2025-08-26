@@ -245,118 +245,100 @@ GEMINI_API_KEY=your_api_key_here
 
 
 
+你將在 Minion Assistant UI（被 TerraDesktop 以 iframe 載入）實作 token 續期的新機制。不要依賴父端程式碼細節；只需遵守下列「事件協議」與「行為要求」。
 
+事件協議（請用這些固定字串）
 
-我只建議做幾個「小修補 + 健壯化」就更穩了：
+Parent → Child
 
-把 childOrigin 抽成常量並只算一次
-現在在多處 new URL(...).origin，抽出 const CHILD_ORIGIN = useMemo(() => new URL(minionAssistantUIApplicationLink).origin, [minionAssistantUIApplicationLink])，避免拼寫錯或未來改 URL 時不一致。
+{"type":"auth:token","token":"<string>","exp":<optional unix-seconds>}
 
-token 近效判定時的 fallback
-parseJwt 失敗或沒有 exp 時你現在 return true（視為快過期），但 sendTokenToIframe() 仍然只是再送一次舊 token。建議：
+{"type":"ui:theme","theme":"dark"|"light"}
 
-如果 !exp 或解析失敗 → 直接「當作需要刷新」，去呼叫你們 Terra 端的取 token 流程（若目前只能 authServices.getUser()，至少重新讀一次；若之後接上 /exchange-for-minion，在這裡打）。
+{"type":"auth:error","code":"...","message":"..."}
 
-同時把「收到子頁 token:request」時也走同一個取 token 函數，確保回的永遠是最新。
+Child → Parent
 
-前景/可見性喚醒再推一次
-瀏覽器掛背景久了計時器可能被 throttle。加上 visibilitychange/focus 事件：頁面回前景或 iframe 面板變可見時，立即 sendTokenToIframe()。
+{"type":"token:request","reason":"startup"|"proactive"|"401"}
 
-負載節流
-加一個 2–3 秒的節流避免極端情況下 spam postMessage（例如主題在父頁被快速切換時或 token:request 短時間連發）。
+Child 必須嚴格驗證 event.origin 是 Terra 的網域（用專案設定值）。Parent 的 targetOrigin 也會是該網域。
 
-鏈路日誌（開發期）
-現在你有 console.warn / console.log 很好；再加一個 console.debug('[minion-panel] postMessage auth:token exp=', exp)，協助後續驗證 exp 與續期時點。
+你要完成的事情
 
-iframe allow（可選）
-若你們有複製/貼上需求，可在 iframe 加 allow="clipboard-read; clipboard-write"（純前端，安全上 OK）。
+移除從 URL 讀取 token 的行為
 
-邏輯順序
-useEffect（初次送 token 與每 60 秒巡檢）依賴 iframeLoaded 沒問題；保留清除 interval 的 return 已有。
+任何 window.location.search 的 token 讀取與依賴全部移除。
 
-主題同步
-prevThemeRef 已做去抖，OK。若未來主題不只 dark/light，可把 payload 擴成 {theme, version}，但現在不必。
-
-如果你想保險一點，這 3 條再補上就完美：
-
-在處理 token:request 前，先判定是否距離過期 < 5 分鐘或解析不到 exp → 走「刷新/重取」路徑，再推送。
-
-在 window.addEventListener('focus', …) 與 document.addEventListener('visibilitychange', …) 裡再推一次 token。
-
-抽出 async function pushFreshToken()：內含「重新取得 → postMessage」的通用流程，供定時巡檢、token:request、前景喚醒三處共用，避免分叉實作。
-
-
-
-
-
-
-
-
-
-Prompt 2 — 給 Minion Assistant UI Copilot（Child 端）
-
-你負責 Minion Assistant UI（被 Terra 以 iframe 載入）。請在不依賴父專案內部實作的情況下完成以下工作：
-
-你要做的事
-
-不再從 URL 讀取 token
-
-移除讀取 window.location.search 中 token 的邏輯。
-
-保留 UI 級別的參數讀取（如主題索引 / 使用者名 / geospatialViewer），但 token 必須改由 postMessage 接收。
+其他 UI 參數（例如 themeIdxCode、userName、geospatialViewer）保留，與認證無關。
 
 建立可更新的 token 儲存與訂閱機制
 
-準備一個簡單的 tokenStore（記憶體內）。
+做一個極簡 tokenStore（記憶體內）：getToken()、setToken(t)、subscribe(listener)。
 
-能夠：設定 token、取得目前 token、在 token 變更時通知訂閱者（API 客戶端、WS 客戶端等）。
+任何需要 token 的地方（API、WebSocket、授權狀態）都轉為從 tokenStore 讀或訂閱。
 
 初始化 postMessage 橋接
 
-監聽 window.message；當收到 {"type":"auth:token"} 時更新 tokenStore。
+在應用啟動時註冊 window.addEventListener("message", ...)。
 
-啟動後若 3 秒內尚未收到 token，向父頁送出 {"type":"token:request","reason":"startup"}。
+收到 {"type":"auth:token"} 即 tokenStore.setToken(token)；若 3 秒內沒收到，主動送 {"type":"token:request","reason":"startup"} 給父頁。
 
-收到 {"type":"ui:theme"} 時，立即切換 dark/light（不重載頁面）。
+收到 {"type":"ui:theme"} 立即切換主題（不重載頁面）。
 
-嚴格驗證 event.origin 是否為 Terra 的網域；不符就忽略。
+對所有訊息檢查 event.origin；不符直接忽略。
 
-API 與 WebSocket 客戶端支援「熱更新 token」
+可選：若收到 {"type":"auth:error"}，以非阻斷式提示在 UI 顯示。
 
-API：每次請求都從 tokenStore 讀取最新 token 設定 Authorization header；或若使用 axios，建立單例並在 token 變更時更新預設 header。
+API 客戶端支援「每次請求都帶最新 token」
 
-WebSocket：
+若用 fetch：包一層 apiFetch(url, init)，在呼叫前從 tokenStore.getToken() 設 Authorization header。
 
-若現有服務支援「動態更新認證」，在 token 變更時呼叫該方法；
+若用 axios：使用單例，並在 tokenStore.subscribe 時更新 defaults.headers.Authorization。
 
-若不支援，請實作「平滑重連」：先用新 token 建立新連線，開通後再關閉舊連線，避免對話中斷。
+加入 401 攔截：當出現 401/440 這類認證錯誤時，先向父頁送 {"type":"token:request","reason":"401"}，等待短暫時間（例如 2–3 秒）後自動重試一次。
 
-401/過期自救流程
+WebSocket（聊天核心）支援「動態換憑證」或「平滑重連」
 
-當 API 或 WS 收到 401 / 440 等認證錯誤時：
+如果現有核心服務（如 GptCoreService）已經有 updateAuth(token) 之類 API，則在 tokenStore.subscribe 時呼叫它即可。
 
-先向父頁送出 {"type":"token:request","reason":"401"}；
+若沒有，請實作「平滑重連」：
 
-等待短暫時間後自動重試一次（使用更新後的 token）。
+監聽 tokenStore；當 token 改變時，先以新 token 建立新 WS 連線，新線開通後再關閉舊線，避免對話中斷。
 
-若仍失敗，可顯示友善提示，允許使用者重試。
+連線切換期間，避免漏訊：可以暫存待送訊息或短暫雙寫（按你們協議最易行的做法）。
 
-授權狀態
+授權狀態切換
 
-以是否持有有效 token（由 tokenStore 控制）來決定是否顯示「未授權」提示；
+以 tokenStore 是否有 token 控制 isAuthorized 顯示與 UI；
 
-若你們歷史上有寫入 sessionStorage 的相容需求，可以在 token 更新時同步寫入，但邏輯以 tokenStore 為主。
+如果專案歷史需要，可在 setToken 時同步寫入 sessionStorage.currentUser = {access_token}，但以 tokenStore 為主來源。
+
+主動續期（可選但推薦）
+
+如果你能解析 exp：在 Child 端可額外排程「快到期前 5 分鐘」送 {"type":"token:request","reason":"proactive"}，讓父頁提前推新 token。
+
+若不解析 exp，也沒關係──Parent 端已做固定巡檢與喚醒推送。
+
+安全與行為要求
+
+不得在 URL、HTML 屬性或可被記錄的地方夾帶 token。
+
+僅驗證通過的 event.origin 訊息才處理。
+
+token 儲存於記憶體或 sessionStorage（如真有相容需求）；避免 localStorage。
+
+不得把 token 打進應用 log；如需 debug，僅打印是否存在與 exp 時距，避免暴露值。
 
 驗收標準
 
-不重載 iframe 的情況下，能在收到父頁新 token 後，API 與 WS 都改用新 token。
+即時換憑證：不重載 iframe 的情況下，父頁推來新 token 後，API/WS 隨即改用新 token，對話不中斷（最多瞬間重連）。
 
-長時間閒置後仍能正常對話（在父頁推送或子頁請求後恢復）。
+長時間閒置可恢復：把頁面放超過原 token 壽命後回來，Child 端能在父端推送或自己 token:request 後恢復聊天。
 
-模擬 401 時，子頁會向父頁請求新 token，並在短時間內自動恢復一次。
+401 自救：模擬 401，Child 端會向父端請新 token，並在短時間內自動重試一次成功。
 
-主題切換能即時生效。
+主題同步：父端切 dark/light，子頁立即切換，不重載。
 
-網址與網路紀錄中不再出現 token；postMessage 的 origin 驗證正確。
+安全：網址與網路紀錄中不出現 token；event.origin 驗證正確；未授權情境下顯示友善提示。
 
-有文件（或 PR 描述）簡述事件協議與本端行為。
+文件：在專案 README 或對應 docs 補充一節「Token Renewal via postMessage」，描述事件協議與 Child 端行為。
