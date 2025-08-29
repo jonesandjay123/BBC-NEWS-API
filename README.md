@@ -243,4 +243,36 @@ GEMINI_API_KEY=your_api_key_here
 
 
 
+Problem
 
+Tokens expired silently after ~1 hour → iframe lost auth.
+
+Theme changes required iframe reload → conversation state lost.
+
+Attempts
+
+Tried silent renew via iframe → blocked by X-Frame-Options: DENY.
+
+Looked into direct token endpoint → not viable on frontend.
+
+Solution
+
+Switched iframe communication to postMessage:
+
+Tokens + UI params (theme, username, roles) pushed from TerraDesktop.
+
+Theme updates now apply instantly without reload.
+
+Added token expiry countdown:
+
+If near expiry → force logout() → TerraDesktop reauth flow.
+
+Added focus/visibility hooks to re-push token when window is active.
+
+Result
+
+Seamless theme switching (no lost chat state).
+
+Token kept valid by triggering TerraDesktop reauth before expiry.
+
+Both repos (TerraDesktop + Minion UI) need to be on the new version for full effect.
