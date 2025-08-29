@@ -243,36 +243,20 @@ GEMINI_API_KEY=your_api_key_here
 
 
 
-Problem
+Subject: Update on Renew Token Investigation and Current Progress
 
-Tokens expired silently after ~1 hour → iframe lost auth.
+Hi tt,
 
-Theme changes required iframe reload → conversation state lost.
+Over the past few days I’ve been investigating the renew token mechanism. Here’s a quick summary of the current status:
 
-Attempts
+Backend dependency: A dedicated renew token endpoint is required. I attempted some front-end–only approaches, but they ultimately failed.
 
-Tried silent renew via iframe → blocked by X-Frame-Options: DENY.
+Fallback approach: As a workaround, I’ve implemented a mechanism to refresh the page before the token expires.
 
-Looked into direct token endpoint → not viable on frontend.
+PostMessage integration: TerraDesktop’s call to MinionAssistant has been refactored to use postMessage. With this new structure, parameters can be passed into MinionAssistant without reloading the iframe.
 
-Solution
+Theme switch as validation: Theme color switching now updates instantly without a reload, serving as proof that the new architecture works. Once a renew endpoint is available, token passing will follow the same reliable flow.
 
-Switched iframe communication to postMessage:
+Next steps: Although my TerraDesktop changes are ready locally, there are still repo conflicts and runtime issues, so I plan to wait a few days before opening a PR.
 
-Tokens + UI params (theme, username, roles) pushed from TerraDesktop.
-
-Theme updates now apply instantly without reload.
-
-Added token expiry countdown:
-
-If near expiry → force logout() → TerraDesktop reauth flow.
-
-Added focus/visibility hooks to re-push token when window is active.
-
-Result
-
-Seamless theme switching (no lost chat state).
-
-Token kept valid by triggering TerraDesktop reauth before expiry.
-
-Both repos (TerraDesktop + Minion UI) need to be on the new version for full effect.
+Since Monday is Labor Day in the US, I wanted to share this progress update ahead of time.
