@@ -240,3 +240,41 @@ GEMINI_API_KEY=your_api_key_here
 - "What entertainment news mentions movies?"
 - "Find business news from 2021"
 - "Show me political news about elections"
+
+
+
+
+Subject: Progress Update – Vector & Logging Setup
+
+Hi Tanvi,
+
+Here’s a quick summary of today’s progress and plan regarding the Vector logging setup for minion-assistant-ui:
+
+Overall Plan (3 main steps):
+
+Set up Vector sidecar to send logs to Databus/Splunk.
+
+Update application logging mechanism to ensure logs are written in the correct format and location for Vector.
+
+Integrate with Splunk for end-to-end verification.
+
+Today’s Accomplishments:
+
+Added Vector sidecar configuration (logger-configmap.yml + deployment.yml updates).
+
+Created CA Secret (JPMCROOTCA.pem) in dev namespace to support SSL connections.
+
+Drafted Calico NetworkPolicies for dev/test/prod (egress to Databus + backend).
+
+Submitted initial PR with these changes.
+
+Pending Items:
+
+Need to confirm correct Functional ID for Kerberos principal (currently placeholder).
+
+Local testing not fully completed due to NetworkPolicy syntax adjustments.
+
+Next step: update the UI app’s logging mechanism to write logs for Vector to capture.
+
+Thanks,
+Jones
