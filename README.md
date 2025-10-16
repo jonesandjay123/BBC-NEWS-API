@@ -245,3 +245,139 @@ GEMINI_API_KEY=your_api_key_here
 
 
 _______________
+
+
+
+🧠 SYSTEM / DEV PROMPT — “Build Assistant Agent” Toolbar & Wizard Integration
+
+Context:
+We’re working inside the Newton team’s Minion Assistant UI, located under
+riskmanagementtool-web/src/components/gptComponents.
+This React-based chat UI is currently embedded within the main Risk Management Tool interface (the drawer panel on the right).
+
+Yesterday, we implemented a collapsible Agentic Journey panel using React Flow.
+That feature is now deprioritized, but we still want to keep a small icon for it — mainly as a decorative or expandable toggle — while focusing our main effort on a new “Build Assistant Agent” workflow.
+
+🎯 GOAL
+
+Implement a new top toolbar section in the Minion Assistant panel that supports:
+
+Agent Selection Dropdown — to switch between existing mock agents.
+
+“+ New Agent” Button — launches a multi-step wizard modal for building a new agent.
+
+Compact Agentic Journey Icon — retained from the previous feature, placed as a small icon button instead of a full toggle.
+
+🧩 FUNCTIONAL REQUIREMENTS
+Toolbar Layout
+
+Located in the same row as the “Debug Mode” and “Clear Chat” controls.
+Structure example:
+
+[ Debug Mode ⏻ ]   [🕸 Agentic Journey icon]   |   Agent: [▼ Minion Assistant]   [+ New Agent]
+
+
+Agentic Journey icon: small (16–20px), tooltip “View Agentic Journey (Mock)”.
+Clicking it may toggle a placeholder panel or console log for now.
+
+Agent Selector: dropdown showing mock agent profiles.
+
+New Agent button: opens the wizard modal.
+
+Mock Agent List (local state)
+
+Use a simple local state array like:
+
+const [agents, setAgents] = useState([
+  { id: '1', name: 'Minion Assistant', model: 'GPT-4.1', persona: 'Exposure dataset Q&A bot' },
+  { id: '2', name: 'Data Auditor', model: 'Claude Sonnet 4', persona: 'Performs data validation tasks' },
+]);
+
+
+Selecting an agent updates the chat header:
+
+Hi [User], I'm [Agent.name].
+
+Wizard Modal (multi-step flow)
+
+Triggered by “+ New Agent”.
+
+Use a simple 4-step mock wizard with “Next” and “Previous” navigation.
+
+Step 1: Define Agent Persona
+
+Inputs:
+
+Agent Name (text)
+
+Persona / Instructions (textarea)
+
+Step 2: Select Sources & Tools
+
+Checkboxes (mock only):
+
+Exposure Dataset
+
+Spectrum API
+
+Python Tool
+
+Step 3: Choose Model
+
+Radio buttons or cards:
+
+GPT-4.1 — “Complex tasks, long docs”
+
+Claude Sonnet 4 — “For coding and technical tasks”
+
+o4-mini — “Reasoning with improved accuracy”
+
+Step 4: Review & Finish
+
+Show entered data summary
+
+“Finish” button: adds new agent to dropdown, logs to console
+
+State persists through steps (no backend yet).
+
+Tech Notes
+
+Modal component can be placed under gptComponents/AgentBuilder/AgentBuilderModal.tsx.
+
+Toolbar logic can live in GPTHeader.tsx or wherever “Debug Mode” is currently implemented.
+
+Style using existing MDBootstrap / dark theme classes to match Minion Assistant UI.
+
+Keep all code modular and commented for future backend integration.
+
+✅ ACCEPTANCE CRITERIA
+
+New toolbar row visible above chat box.
+
+Dropdown correctly lists and switches mock agents.
+
+“+ New Agent” opens the 4-step wizard modal.
+
+Completing wizard adds new agent to dropdown.
+
+Compact Agentic Journey icon remains functional but minimal.
+
+No layout regression to existing Chat UI.
+
+🧭 DESIGN HINTS
+
+Keep everything responsive; dropdown width around 200px is fine.
+
+For wizard navigation, simple <Step x of 4> indicator at the top is enough.
+
+Use transitions (e.g. fade between steps) if easy, otherwise static is fine.
+
+Maintain dark theme and orange accent alignment with existing Minion Assistant branding.
+
+💬 OPTIONAL (if you detect unused or legacy code)
+
+If old Agentic Journey components are no longer used, wrap them under a React.lazy import or move them to a separate folder like legacy/AgenticJourney/ but do not delete yet.
+
+Summary:
+You are extending the existing Minion Assistant UI by replacing the full Agentic Journey toggle with a compact icon and introducing a new “Agent Builder” feature — a dropdown for selecting agents and a multi-step modal wizard for creating new ones, using mock data only for now.
+
