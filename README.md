@@ -248,8 +248,3 @@ _______________
 
 
 
-
-Create and configure Prettier for this TypeScript React project.
-Add a .prettierrc file in the project root with settings for 2-space indent, single quotes, trailing commas, semicolons enabled, and a print width of 100.
-Also create a .vscode/settings.json that sets Prettier as the default formatter and enables "format on save" for TypeScript, TSX, JavaScript, and JSX files.
-
