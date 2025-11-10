@@ -247,4 +247,37 @@ GEMINI_API_KEY=your_api_key_here
 _______________
 
 
+Project Title:
 
+AI-Assisted Architecture Visualizer
+
+Project Description:
+
+This project introduces an AI-driven tool that helps developers and architects visualize system designs effortlessly.
+By entering natural language descriptions or selecting from modular components, the tool automatically generates architecture and flow diagrams using formats like Mermaid.js and PlantUML.
+It simplifies the design phase, reduces documentation overhead, and enables quick visual feedback for evolving architectures.
+
+Project Benefits:
+
+Reduces time spent on manual architecture diagramming
+
+Bridges gap between text-based design and visual representation
+
+Allows non-architects to contribute to system design
+
+Facilitates faster collaboration and iteration
+
+Provides a no-code way to generate and refine technical diagrams
+
+Theme:
+
+Theme 1 – Architecture, Discovery & Design
+
+Required Skills:
+HTML · React · Mermaid.js · OpenAI/Gemini API
+
+Demo Location:
+New York, USA
+
+Max Team Members:
+1
